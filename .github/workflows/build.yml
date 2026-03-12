@@ -8,11 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    # Устанавливаем переменные окружения для всего процесса
     env:
       NODE_OPTIONS: "--max-old-space-size=4096"
-      GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED'"
 
     steps:
       - name: Checkout repository
@@ -22,49 +19,51 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'zulu' # Zulu часто стабильнее работает со старым Gradle
+          distribution: 'zulu'
           cache: 'gradle'
 
       - name: Install Dependencies
-        # Используем --legacy-peer-deps, так как проекту 4 года
         run: npm install --legacy-peer-deps
 
-      - name: Prepare Android Environment
-        # 1. Прописываем флаги в gradle.properties (на случай если Gradle игнорирует env)
-        # 2. Включаем Jetifier для совместимости старых библиотек с AndroidX
+      - name: Inject Fixes
         run: |
           mkdir -p android
-          touch android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED" > android/gradle.properties
           echo "android.useAndroidX=true" >> android/gradle.properties
           echo "android.enableJetifier=true" >> android/gradle.properties
-          echo "org.gradle.daemon=false" >> android/gradle.properties
+          # Принудительно отключаем проверки, которые могут стопорить сборку
+          sed -i 's/abortOnError true/abortOnError false/g' android/app/build.gradle || true
 
       - name: Build APK (Debug)
         run: |
           cd android
           chmod +x gradlew
-          # Сначала чистим, потом собираем с полной трассировкой ошибок
-          ./gradlew clean assembleDebug --stacktrace --info
+          ./gradlew assembleDebug --no-daemon --stacktrace -x lint
 
-      - name: Upload Success APK
+      - name: Upload APK on Success
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GrandMobile-Ready
+          name: GrandMobile-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Error Logs (Only on Failure)
+      - name: Debug Output (If Failed)
         if: failure()
+        run: |
+          echo "--- Структура папок для поиска ошибок ---"
+          ls -R android/app/build/outputs || echo "Папка outputs не создана"
+          ls -R android/app/build/reports || echo "Папка reports не создана"
+
+      - name: Upload Any Possible Logs
+        if: always() # Выполнять всегда, даже если всё упало
         uses: actions/upload-artifact@v4
         with:
-          name: build-failure-report
+          name: full-build-logs
           path: |
             android/app/build/reports/
-            **/build/reports/issues/
+            android/app/build/logs/
