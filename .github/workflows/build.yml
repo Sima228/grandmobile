@@ -20,6 +20,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
         
+      - name: Install Node.js dependencies
+        run: |
+          npm install
+        
       - name: Build APK
         run: |
           cd android
