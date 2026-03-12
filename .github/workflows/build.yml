@@ -27,16 +27,12 @@ jobs:
           distribution: 'zulu'
           cache: 'gradle'
 
-      - name: Accept Android Licenses
-        run: yes | sdkmanager --licenses || true
-
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
       - name: Deep Repair Project
         run: |
           mkdir -p android
-          # Создаем идеальный конфиг (перезаписываем всё)
           cat <<EOF > android/gradle.properties
           FLIPPER_VERSION=0.99.0
           org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED
@@ -44,8 +40,6 @@ jobs:
           android.enableJetifier=true
           android.disableResourceValidation=true
           EOF
-          
-          # Чистим проблемные папки
           rm -rf android/app/src/main/res/drawable-* || true
           rm -rf android/app/build/generated || true
 
@@ -59,14 +53,16 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GrandMobile-Success-APK
+          name: GrandMobile-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Logs on Failure
-        if: failure() # ЭТОТ АРТЕФАКТ ПОЯВИТСЯ ПРИ ОШИБКЕ
+        if: always() # ЗАГРУЖАТЬ ВСЕГДА
         uses: actions/upload-artifact@v4
         with:
-          name: Error-Logs
+          name: Full-Build-Logs
+          # Мы берем вообще все отчеты, которые Gradle мог создать
           path: |
             android/app/build/reports/
-            android/app/build/logs/
+            **/build/test-results/
+            **/build/outputs/logs/
