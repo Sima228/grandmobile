@@ -35,6 +35,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --info --debug
 
+      - name: Show Gradle error log
+        if: failure()
+        run: |
+          echo "===== Last 100 lines of Gradle daemon log ====="
+          tail -n 100 /home/runner/.gradle/daemon/*/daemon-*.log 2>/dev/null || echo "No daemon log found"
+
+      - name: Upload full Gradle log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-daemon-log
+          path: /home/runner/.gradle/daemon/*/daemon-*.log
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
