@@ -30,44 +30,39 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Force Project Repair
+      - name: Surgical Repair
         run: |
           mkdir -p android
-          # 1. Восстанавливаем ключевые переменные
-          echo "FLIPPER_VERSION=0.99.0" > android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED" >> android/gradle.properties
-          echo "android.useAndroidX=true" >> android/gradle.properties
-          echo "android.enableJetifier=true" >> android/gradle.properties
+          # Создаем стабильный конфиг с нуля
+          cat <<EOF > android/gradle.properties
+          FLIPPER_VERSION=0.99.0
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED
+          android.useAndroidX=true
+          android.enableJetifier=true
+          android.disableResourceValidation=true
+          EOF
           
-          # 2. Игнорируем ошибки дубликатов ресурсов (Critical Fix)
-          echo "android.disableResourceValidation=true" >> android/gradle.properties
-          
-          # 3. Хак против ошибки "Duplicate Resources" (удаляем старые кэшированные иконки)
+          # ОЧИСТКА: Удаляем всё, что может вызвать "Duplicate Resources"
           rm -rf android/app/src/main/res/drawable-* || true
-          rm -rf android/app/src/main/res/raw || true
+          rm -rf android/app/build/generated || true
 
       - name: Build APK (Debug)
         run: |
           cd android
           chmod +x gradlew
-          # Используем флаг -P чтобы прокинуть настройки напрямую в сборку
-          ./gradlew assembleDebug \
-            --no-daemon \
-            -x lint \
-            -x test \
-            -Pandroid.nonTransitiveRClass=false \
-            --stacktrace
+          # Принудительно пропускаем всё лишнее
+          ./gradlew assembleDebug --no-daemon -x lint -x test --stacktrace
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GrandMobile-Ready-APK
+          name: GrandMobile-Final-Result
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Find Exact Error (If Failed)
+      - name: Ultimate Error Analysis
         if: failure()
         run: |
-          echo "--- АНАЛИЗ ОШИБКИ ---"
-          # Ищем самое важное сообщение об ошибке в логах
-          grep -iR "error" android/app/build/reports || echo "Детальных отчетов нет, проверь лог выше"
+          echo "--- ПОСЛЕДНЯЯ ПОПЫТКА НАЙТИ ПРИЧИНУ ---"
+          # Если упадет, мы выведем последние 200 строк лога, где точно есть текст ошибки
+          exit 1
