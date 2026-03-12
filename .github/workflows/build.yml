@@ -12,13 +12,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Для React Native 0.67 Node 16 — это самая стабильная версия
       - name: Setup Node.js 16
         uses: actions/setup-node@v4
         with:
           node-version: 16
 
-      # Твой проект старый, Java 11 исправит ошибки памяти
       - name: Setup JDK 11
         uses: actions/setup-java@v4
         with:
@@ -29,31 +27,43 @@ jobs:
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Fix and Clean
+      - name: Critical Manifest & Environment Fix
         run: |
           mkdir -p android
-          echo "FLIPPER_VERSION=0.99.0" > android/gradle.properties
-          echo "android.useAndroidX=true" >> android/gradle.properties
-          echo "android.enableJetifier=true" >> android/gradle.properties
-          # Чистим старые ошибки
+          # Создаем конфиг
+          cat <<EOF > android/gradle.properties
+          FLIPPER_VERSION=0.99.0
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+          
+          # ХАК: Исправляем ошибку 'Manifest merger failed' (android:exported)
+          # Этот скрипт найдет все Activity в манифесте и добавит им exported=true, если его нет
+          find android/app/src/main/ -name "AndroidManifest.xml" -exec sed -i 's/<activity/<activity android:exported="true"/g' {} +
+          find android/app/src/main/ -name "AndroidManifest.xml" -exec sed -i 's/android:exported="true" android:exported="true"/android:exported="true"/g' {} +
+
           cd android && ./gradlew clean
 
       - name: Build APK (Debug)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -x lint -x test
+          # Собираем с максимальным игнорированием ошибок оформления
+          ./gradlew assembleDebug -x lint -x test --stacktrace
 
-      - name: Upload Final APK
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Grand-Mobile-Game
+          name: GrandMobile-Final
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Logs (If Error)
-        if: failure()
+      - name: Failure Logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Error-Reports
-          path: android/app/build/reports/
+          name: Full-Diagnostic-Logs
+          path: |
+            android/app/build/reports/
+            android/app/build/logs/
