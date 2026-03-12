@@ -133,7 +133,7 @@ android {
 
     defaultConfig {
         applicationId "com.grandmobile"
-        minSdkVersion rootProject.ext.minSdkVersion
+        minSdkVersion 23
         targetSdkVersion 34
         versionCode 1
         versionName "1.0"
