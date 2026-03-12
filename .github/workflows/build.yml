@@ -25,7 +25,10 @@ jobs:
         with:
           java-version: '17'
           distribution: 'zulu'
-          cache: 'gradle'
+
+      - name: Accept Android Licenses
+        # Иногда сборка падает, потому что "не приняты условия использования SDK"
+        run: yes | sdkmanager --licenses || true
 
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
@@ -33,17 +36,18 @@ jobs:
       - name: Inject Fixes
         run: |
           mkdir -p android
+          # Создаем чистый gradle.properties с флагами для Java 17
           echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g --add-opens java.base/java.io=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED" > android/gradle.properties
           echo "android.useAndroidX=true" >> android/gradle.properties
           echo "android.enableJetifier=true" >> android/gradle.properties
-          # Принудительно отключаем проверки, которые могут стопорить сборку
-          sed -i 's/abortOnError true/abortOnError false/g' android/app/build.gradle || true
+          echo "org.gradle.daemon=false" >> android/gradle.properties
 
       - name: Build APK (Debug)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace -x lint
+          # Флаг --stacktrace покажет саму ошибку прямо в логах GitHub
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK on Success
         if: success()
@@ -52,18 +56,8 @@ jobs:
           name: GrandMobile-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Debug Output (If Failed)
+      - name: Force Show Error (If Failed)
         if: failure()
         run: |
-          echo "--- Структура папок для поиска ошибок ---"
-          ls -R android/app/build/outputs || echo "Папка outputs не создана"
-          ls -R android/app/build/reports || echo "Папка reports не создана"
-
-      - name: Upload Any Possible Logs
-        if: always() # Выполнять всегда, даже если всё упало
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-build-logs
-          path: |
-            android/app/build/reports/
-            android/app/build/logs/
+          echo "!!! ОШИБКА НАЙДЕНА !!!"
+          echo "Прокрути лог шага 'Build APK (Debug)' ВВЕРХ до слов 'What went wrong:'"
